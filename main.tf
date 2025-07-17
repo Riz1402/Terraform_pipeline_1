@@ -43,4 +43,77 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly-EK
 
 resource "aws_eks_cluster" "terra-eks" {
   name     = "terra-cluster"
-  role_arn = aws_ia
+  role_arn = aws_iam_role.eks-iam-role.arn
+
+  vpc_config {
+    subnet_ids = [var.subnet_id_1, var.subnet_id_2]
+  }
+
+  depends_on = [aws_iam_role.eks-iam-role]
+}
+
+resource "aws_iam_role" "workernodes" {
+  name = "eks-node-group-example"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.workernodes.name
+}
+
+resource "aws_iam_role_policy_attachment" "AmazonEKS_CNI_Policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.workernodes.name
+}
+
+resource "aws_iam_role_policy_attachment" "EC2InstanceProfileForImageBuilderECRContainerBuilds" {
+  policy_arn = "arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds"
+  role       = aws_iam_role.workernodes.name
+}
+
+resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.workernodes.name
+}
+
+resource "aws_eks_node_group" "worker-node-group" {
+  cluster_name    = aws_eks_cluster.terra-eks.name
+  node_group_name = "Riz-workernodes"
+  node_role_arn   = aws_iam_role.workernodes.arn
+  subnet_ids      = [var.subnet_id_1, var.subnet_id_2]
+  instance_types  = ["t3.xlarge"]
+
+  scaling_config {
+    desired_size = 1
+    max_size     = 1
+    min_size     = 1
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy
+  ]
+}
+
+variable "subnet_id_1" {
+  description = "Subnet 1 ID"
+  type        = string
+}
+
+variable "subnet_id_2" {
+  description = "Subnet 2 ID"
+  type        = string
+}
